@@ -3,9 +3,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
-import anthropic
+import requests
 import os
-import traceback
 
 app = FastAPI()
 
@@ -23,21 +22,31 @@ class ChatRequest(BaseModel):
 
 @app.post("/api/chat")
 async def chat(req: ChatRequest):
+    api_key = os.environ.get("ANTHROPIC_API_KEY")
+    if not api_key:
+        return JSONResponse(status_code=500, content={"error": "ANTHROPIC_API_KEY not set"})
     try:
-        api_key = os.environ.get("ANTHROPIC_API_KEY")
-        if not api_key:
-            return JSONResponse(status_code=500, content={"error": "ANTHROPIC_API_KEY not set"})
-        
-        client = anthropic.Anthropic(api_key=api_key)
-        response = client.messages.create(
-            model="claude-haiku-4-5-20251001",
-            max_tokens=req.max_tokens,
-            system=req.system,
-            messages=[{"role": "user", "content": req.message}]
+        response = requests.post(
+            "https://api.anthropic.com/v1/messages",
+            headers={
+                "x-api-key": api_key,
+                "anthropic-version": "2023-06-01",
+                "content-type": "application/json"
+            },
+            json={
+                "model": "claude-haiku-4-5-20251001",
+                "max_tokens": req.max_tokens,
+                "system": req.system,
+                "messages": [{"role": "user", "content": req.message}]
+            },
+            timeout=30
         )
-        return {"content": response.content[0].text}
+        data = response.json()
+        if "content" in data:
+            return {"content": data["content"][0]["text"]}
+        else:
+            return JSONResponse(status_code=500, content={"error": str(data)})
     except Exception as e:
-        print(f"ERROR: {traceback.format_exc()}")
         return JSONResponse(status_code=500, content={"error": str(e)})
 
 @app.get("/health")
