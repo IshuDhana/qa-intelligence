@@ -1,11 +1,13 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 import anthropic
 import os
+import traceback
 
-app = FastAPI(title="QA Intelligence API")
+app = FastAPI()
 
 app.add_middleware(
     CORSMiddleware,
@@ -14,33 +16,32 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# ── REQUEST MODEL ──
 class ChatRequest(BaseModel):
     system: str
     message: str
     max_tokens: int = 1000
 
-# ── CHAT ENDPOINT ──
 @app.post("/api/chat")
 async def chat(req: ChatRequest):
-    api_key = os.environ.get("ANTHROPIC_API_KEY")
-    if not api_key:
-        raise HTTPException(status_code=500, detail="ANTHROPIC_API_KEY not set")
+    try:
+        api_key = os.environ.get("ANTHROPIC_API_KEY")
+        if not api_key:
+            return JSONResponse(status_code=500, content={"error": "ANTHROPIC_API_KEY not set"})
+        
+        client = anthropic.Anthropic(api_key=api_key)
+        response = client.messages.create(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=req.max_tokens,
+            system=req.system,
+            messages=[{"role": "user", "content": req.message}]
+        )
+        return {"content": response.content[0].text}
+    except Exception as e:
+        print(f"ERROR: {traceback.format_exc()}")
+        return JSONResponse(status_code=500, content={"error": str(e)})
 
-    client = anthropic.Anthropic(api_key=api_key)
-
-    response = client.messages.create(
-        model="claude-sonnet-4-20250514",
-        max_tokens=req.max_tokens,
-        system=req.system,
-        messages=[{"role": "user", "content": req.message}]
-    )
-    return {"content": response.content[0].text}
-
-# ── HEALTH CHECK ──
 @app.get("/health")
 def health():
-    return {"status": "ok", "service": "QA Intelligence"}
+    return {"status": "ok"}
 
-# ── SERVE FRONTEND (must be last) ──
 app.mount("/", StaticFiles(directory="static", html=True), name="static")
