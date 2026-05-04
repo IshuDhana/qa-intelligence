@@ -1,4 +1,4 @@
-# QA Intelligence — Deployment Guide
+# QA Intelligence — AI-Powered Testing Co-Pilot
 
 AI-powered QA & testing co-pilot. Built with Python (FastAPI) + Anthropic Claude API.
 
